@@ -1,111 +1,201 @@
-namespace MyTested.AspNetCore.Mvc
+namespace MyTested.AspNetCore.Mvc.Test.BuildersTests.ModelsTests
 {
-    using System;
-    using System.Linq.Expressions;
-    using System.Threading.Tasks;
-    using Builders.ActionResults.LocalRedirect;
-    using Builders.Contracts.ActionResults.LocalRedirect;
-    using Internal.TestContexts;
-    using Utilities.Validators;
+    using Exceptions;
+    using Setups;
+    using Setups.Controllers;
+    using Setups.Models;
+    using Setups.ViewComponents;
+    using Xunit;
 
-    /// <summary>
-    /// Contains extension methods for <see cref="ILocalRedirectTestBuilder"/>.
-    /// </summary>
-    public static class LocalRedirectTestBuilderExtensions
+    public class ModelErrorDetailsTestBuilderTests
     {
-        /// <summary>
-        /// Tests whether <see cref="Microsoft.AspNetCore.Mvc.LocalRedirectResult"/> redirects to specific action.
-        /// </summary>
-        /// <typeparam name="TController">Type of expected redirect controller.</typeparam>
-        /// <param name="builder">Instance of <see cref="ILocalRedirectTestBuilder"/> type.</param>
-        /// <param name="actionCall">Method call expression indicating the expected redirect action.</param>
-        /// <returns>The same <see cref="IAndLocalRedirectTestBuilder"/>.</returns>
-        public static IAndLocalRedirectTestBuilder To<TController>(
-            this ILocalRedirectTestBuilder builder,
-            Expression<Action<TController>> actionCall)
-            where TController : class 
-            => ProcessRouteLambdaExpression(builder, actionCall);
-
-        /// <summary>
-        /// Tests whether <see cref="Microsoft.AspNetCore.Mvc.LocalRedirectResult"/> redirects to specific asynchronous action.
-        /// </summary>
-        /// <typeparam name="TController">Type of expected redirect controller.</typeparam>
-        /// <param name="builder">Instance of <see cref="ILocalRedirectTestBuilder"/> type.</param>
-        /// <param name="actionCall">Method call expression indicating the expected asynchronous action.</param>
-        /// <returns>The same <see cref="IAndLocalRedirectTestBuilder"/>.</returns>
-        public static IAndLocalRedirectTestBuilder To<TController>(
-            this ILocalRedirectTestBuilder builder, 
-            Expression<Func<TController, Task>> actionCall)
-            where TController : class 
-            => ProcessRouteLambdaExpression(builder, actionCall);
-
-        private static IAndLocalRedirectTestBuilder ProcessRouteLambdaExpression(
-            ILocalRedirectTestBuilder builder,
-            LambdaExpression actionCall)
+        [Fact]
+        public void ThatEqualsShouldNotThrowExceptionWhenProvidedMessageIsValid()
         {
-            var actualBuilder = (LocalRedirectTestBuilder)builder;
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
 
-            ExpressionLinkValidator.Validate(
-                actualBuilder.TestContext,
-                LinkGenerationTestContext.FromLocalRedirectResult(actualBuilder.ActionResult),
-                actionCall,
-                actualBuilder.ThrowNewFailedValidationException);
-
-            return actualBuilder;
+            MyController<MvcController>
+                .Instance()
+                .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<RequestModel>()
+                    .ContainingNoErrorFor(m => m.NonRequiredString)
+                    .ContainingErrorFor(m => m.RequiredString).ThatEquals("The RequiredString field is required.")
+                    .AndAlso()
+                    .ContainingErrorFor(m => m.RequiredString)
+                    .AndAlso()
+                    .ContainingNoErrorFor(m => m.NotValidateInteger)
+                    .AndAlso()
+                    .ContainingError("RequiredString")
+                    .ContainingErrorFor(m => m.Integer).ThatEquals($"The field Integer must be between {1} and {int.MaxValue}.")
+                    .ContainingError("RequiredString")
+                    .ContainingError("Integer")
+                    .ContainingNoErrorFor(m => m.NotValidateInteger));
         }
-    }
-    public static class RedirectTestBuilderExtensions
-    {
-        /// <summary>
-        /// Tests whether <see cref="RedirectToActionResult"/> or <see cref="RedirectToRouteResult"/>
-        /// redirects to specific action.
-        /// </summary>
-        /// <typeparam name="TController">Type of expected redirect controller.</typeparam>
-        /// <param name="builder">Instance of <see cref="IRedirectTestBuilder"/> type.</param>
-        /// <param name="actionCall">Method call expression indicating the expected redirect action.</param>
-        /// <returns>The same <see cref="IAndRedirectTestBuilder"/>.</returns>
-        public static IAndRedirectTestBuilder To<TController>(
-            this IRedirectTestBuilder builder,
-            Expression<Action<TController>> actionCall)
-            where TController : class 
-            => ProcessRouteLambdaExpression(builder, actionCall);
 
-        /// <summary>
-        /// Tests whether <see cref="RedirectToActionResult"/> or <see cref="RedirectToRouteResult"/>
-        /// redirects to specific asynchronous action.
-        /// </summary>
-        /// <typeparam name="TController">Type of expected redirect controller.</typeparam>
-        /// <param name="builder">Instance of <see cref="IRedirectTestBuilder"/> type.</param>
-        /// <param name="actionCall">Method call expression indicating the expected asynchronous redirect action.</param>
-        /// <returns>The same <see cref="IAndRedirectTestBuilder"/>.</returns>
-        public static IAndRedirectTestBuilder To<TController>(
-            this IRedirectTestBuilder builder, 
-            Expression<Func<TController, Task>> actionCall)
-            where TController : class 
-            => ProcessRouteLambdaExpression(builder, actionCall);
-
-        private static IAndRedirectTestBuilder ProcessRouteLambdaExpression(
-            IRedirectTestBuilder redirectTestBuilder,
-            LambdaExpression actionCall)
+        [Fact]
+        public void ThatEqualsShouldThrowExceptionWhenProvidedMessageIsValid()
         {
-            var actualBuilder = GetActualBuilder(redirectTestBuilder);
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
 
-            actualBuilder.IncludeCountCheck = false;
-
-            var controllerTestContext = actualBuilder.TestContext as ControllerTestContext;
-            var actionResult = actualBuilder.TestContext.MethodResult as IActionResult;
-
-            ExpressionLinkValidator.Validate(
-                controllerTestContext, 
-                LinkGenerationTestContext.FromRedirectResult(actionResult),
-                actionCall,
-                actualBuilder.ThrowNewFailedValidationException);
-
-            return (IAndRedirectTestBuilder)actualBuilder;
+            Test.AssertException<ModelErrorAssertionException>(
+                () =>
+                {
+                    MyController<MvcController>
+                        .Instance()
+                        .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                        .ShouldHave()
+                        .ModelState(modelState => modelState.For<RequestModel>()
+                            .ContainingNoErrorFor(m => m.NonRequiredString)
+                            .AndAlso()
+                            .ContainingErrorFor(m => m.RequiredString).ThatEquals("RequiredString field is required.")
+                            .ContainingErrorFor(m => m.Integer).ThatEquals(string.Format("Integer must be between {0} and {1}.", 1, int.MaxValue)));
+                }, 
+                "When calling ModelStateCheck action in MvcController expected error message for key RequiredString to be 'RequiredString field is required.', but instead found 'The RequiredString field is required.'.");
         }
-        
-        private static IBaseTestBuilderWithRouteValuesResultInternal<IAndRedirectTestBuilder>
-            GetActualBuilder(IRedirectTestBuilder redirectTestBuilder)
-            => (IBaseTestBuilderWithRouteValuesResultInternal<IAndRedirectTestBuilder>)redirectTestBuilder;
+
+        [Fact]
+        public void BeginningWithShouldNotThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            MyController<MvcController>
+                .Instance()
+                .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<RequestModel>()
+                    .ContainingNoErrorFor(m => m.NonRequiredString)
+                    .ContainingErrorFor(m => m.RequiredString).BeginningWith("The RequiredString")
+                    .ContainingErrorFor(m => m.Integer).BeginningWith("The field Integer"));
+        }
+
+        [Fact]
+        public void BeginningWithShouldThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            Test.AssertException<ModelErrorAssertionException>(
+                () =>
+                {
+                    MyController<MvcController>
+                        .Instance()
+                        .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                        .ShouldHave()
+                        .ModelState(modelState => modelState.For<RequestModel>()
+                            .ContainingNoErrorFor(m => m.NonRequiredString)
+                            .ContainingErrorFor(m => m.RequiredString).BeginningWith("RequiredString")
+                            .ContainingErrorFor(m => m.Integer).BeginningWith("Integer"));
+                }, 
+                "When calling ModelStateCheck action in MvcController expected error message for key 'RequiredString' to begin with 'RequiredString', but instead found 'The RequiredString field is required.'.");
+        }
+
+        [Fact]
+        public void EngingWithShouldNotThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            MyController<MvcController>
+                .Instance()
+                .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<RequestModel>()
+                    .ContainingNoErrorFor(m => m.NonRequiredString)
+                    .ContainingErrorFor(m => m.RequiredString).EndingWith("required.")
+                    .ContainingErrorFor(m => m.Integer).EndingWith($"{1} and {int.MaxValue}."));
+        }
+
+        [Fact]
+        public void EngingWithShouldThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            Test.AssertException<ModelErrorAssertionException>(
+                () =>
+                {
+                    MyController<MvcController>
+                        .Instance()
+                        .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                        .ShouldHave()
+                        .ModelState(modelState => modelState.For<RequestModel>()
+                            .ContainingNoErrorFor(m => m.NonRequiredString)
+                            .ContainingErrorFor(m => m.RequiredString).EndingWith("required!")
+                            .ContainingErrorFor(m => m.Integer).EndingWith($"{1} and {int.MaxValue}!"));
+                }, 
+                "When calling ModelStateCheck action in MvcController expected error message for key 'RequiredString' to end with 'required!', but instead found 'The RequiredString field is required.'.");
+        }
+
+        [Fact]
+        public void ContainingShouldNotThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            MyController<MvcController>
+                .Instance()
+                .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<RequestModel>()
+                    .ContainingNoErrorFor(m => m.NonRequiredString)
+                    .ContainingErrorFor(m => m.RequiredString).Containing("required")
+                    .ContainingErrorFor(m => m.Integer).Containing("between"));
+        }
+
+        [Fact]
+        public void ContainingShouldThrowExceptionWhenProvidedMessageIsValid()
+        {
+            var requestModelWithErrors = TestObjectFactory.GetRequestModelWithErrors();
+
+            Test.AssertException<ModelErrorAssertionException>(
+                () =>
+                {
+                    MyController<MvcController>
+                        .Instance()
+                        .Calling(c => c.ModelStateCheck(requestModelWithErrors))
+                        .ShouldHave()
+                        .ModelState(modelState => modelState.For<RequestModel>()
+                            .ContainingNoErrorFor(m => m.NonRequiredString)
+                            .ContainingErrorFor(m => m.RequiredString).Containing("invalid")
+                            .ContainingErrorFor(m => m.Integer).Containing("invalid"));
+                },
+                "When calling ModelStateCheck action in MvcController expected error message for key 'RequiredString' to contain 'invalid', but instead found 'The RequiredString field is required.'.");
+        }
+
+        [Fact]
+        public void NestedModelsShouldBeResolvedCorrectlyWithModelStateFor()
+        {
+            MyController<MvcController>
+                .Instance()
+                .Calling(c => c.ModelStateWithNestedError())
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<NestedModel>()
+                    .ContainingErrorFor(m => m.Nested.Integer)
+                    .ContainingErrorFor(m => m.Nested.String));
+        }
+
+        [Fact]
+        public void ThatEqualsShouldNotThrowExceptionWhenProvidedMessageIsValidInViewComponent()
+        {
+            MyViewComponent<NormalComponent>
+                .Instance()
+                .WithSetup(vc =>
+                {
+                    vc.ModelState.AddModelError("RequiredString", "The RequiredString field is required.");
+                    vc.ModelState.AddModelError("Integer", $"The field Integer must be between {1} and {int.MaxValue}.");
+                })
+                .InvokedWith(c => c.Invoke())
+                .ShouldHave()
+                .ModelState(modelState => modelState.For<RequestModel>()
+                    .ContainingNoErrorFor(m => m.NonRequiredString)
+                    .ContainingErrorFor(m => m.RequiredString).ThatEquals("The RequiredString field is required.")
+                    .AndAlso()
+                    .ContainingErrorFor(m => m.RequiredString)
+                    .AndAlso()
+                    .ContainingNoErrorFor(m => m.NotValidateInteger)
+                    .AndAlso()
+                    .ContainingError("RequiredString")
+                    .ContainingErrorFor(m => m.Integer).ThatEquals($"The field Integer must be between {1} and {int.MaxValue}.")
+                    .ContainingError("RequiredString")
+                    .ContainingError("Integer")
+                    .ContainingNoErrorFor(m => m.NotValidateInteger));
+        }
     }
 }
